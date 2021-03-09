@@ -1,0 +1,10 @@
+[package]
+name = "sinoalice_core"
+version = "0.1.0"
+authors = ["Colin Redman <20376935+credman0@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
