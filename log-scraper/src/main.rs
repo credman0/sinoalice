@@ -51,7 +51,7 @@ const HALF_SECOND:time::Duration = time::Duration::from_millis(500);
 const ONE_SECOND:time::Duration = time::Duration::from_millis(1000);
 const THREE_SECONDS:time::Duration = time::Duration::from_millis(3000);
 
-const FAKE_NAME_SUFFIXES: &'static [&'static str] = &["Exorcist", "Holy Knight", "Hero", "Knight", "Sorcerer", "Warrior", "Wind God"];
+const FAKE_NAME_SUFFIXES: &'static [&'static str] = &["Exorcist", "Holy Knight", "Hero", "Knight", "Sorcerer", "Warrior", "Wind God", "Water God", "Flame God", "Sage", "Angel", "Barrier Master"];
 //const CORRECTED_WORDS: &'static [&'static str] = &["Zweihänder of Justice", "Kainé's Sword"];
 
 fn main() {
