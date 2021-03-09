@@ -52,7 +52,7 @@ const ONE_SECOND:time::Duration = time::Duration::from_millis(1000);
 const THREE_SECONDS:time::Duration = time::Duration::from_millis(3000);
 
 const FAKE_NAME_SUFFIXES: &'static [&'static str] = &["Exorcist", "Holy Knight", "Hero", "Knight", "Sorcerer", "Warrior", "Wind God"];
-const CORRECTED_WORDS: &'static [&'static str] = &["Zweihänder of Justice", "Kainé's Sword"];
+//const CORRECTED_WORDS: &'static [&'static str] = &["Zweihänder of Justice", "Kainé's Sword"];
 
 fn main() {
     let args = Cli::from_args();
@@ -68,7 +68,9 @@ fn main() {
         seen_players.push(player.as_ref().unwrap().clone());
         let grid = scrape();
         all_players.insert(player.unwrap(), grid);
+        check_disconnect();
         player = next_player(&seen_players);
+        reset_list();
     }
     std::fs::write("all_players.json", serde_json::to_string_pretty(&all_players).unwrap()).unwrap();
 }
@@ -226,10 +228,22 @@ fn disconnect_accept() {
     thread::sleep(THREE_SECONDS);
 }
 
+fn reset_list() {
+    press_back();
+    adb::tap(200, 1250);
+    thread::sleep(THREE_SECONDS);
+}
+
+fn press_back() {
+    adb::tap(150, 1900);
+    thread::sleep(ONE_SECOND);
+
+}
+
 fn check_disconnect() {
     let text = do_capture();
     let text = text.replace("\n", "");
-    if text.contains("Connection to server failed, do you want to retry?") {
+    if text.contains("Connection to server failed.") {
         disconnect_accept();
         check_disconnect();
     }
@@ -282,11 +296,28 @@ fn corrected_name (name:String) -> String {
             fixed_name = fixed_name.strip_suffix(format!("'s {}", suffix).as_str()).unwrap().to_string();
         }
     }
-    for nonenglish_word in CORRECTED_WORDS {
-        if edit_distance(&nonenglish_word, fixed_name.as_str()) < 3 {
-            println!("{} -> {}", &fixed_name, nonenglish_word);
-            fixed_name = nonenglish_word.to_string();
-        }
-    }
+    let fixed_name = closest_match_name(fixed_name);
     return fixed_name;
+}
+
+fn closest_match_name(weapon:String) -> String {
+    if WEAPONS.contains_key(&weapon.to_lowercase()) {
+        return weapon;
+    } else {
+        let mut matches = vec![];
+        for weapon_entry in WEAPONS.values() {
+            let weapon_name = &weapon_entry.name;
+            if edit_distance(&weapon_name, &weapon) < 3 {
+                matches.push(weapon_name.clone());
+            }
+        }
+        if matches.len() > 1 {
+            panic!("Ambiguous weapon name: {}", weapon);
+        }
+        if matches.len() == 0 {
+            panic!("Unknown weapon name: {}", weapon);
+        }
+        println!("{} -> {}", &weapon, &matches[0]);
+        return matches[0].clone();
+    }
 }
