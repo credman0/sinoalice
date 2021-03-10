@@ -25,6 +25,13 @@ pub struct LeveledWeapon {
     pub c_aid_skill_lvl:Option<u32>
 }
 
+#[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
+pub struct SimpleWeapon {
+    pub name:String,
+    pub c_lvl:Option<u32>,
+    pub c_aid_lvl:Option<u32>
+}
+
 impl LeveledWeapon {
     pub fn scaled_skill(&self) -> CSkill {
         return CSkill {effect:&self.weapon.c_skill.effect*LeveledWeapon::get_c_skill_level_multiplier(self.c_skill_lvl.unwrap_or(1)), min_targets:self.weapon.c_skill.min_targets, max_targets:self.weapon.c_skill.max_targets}
@@ -149,12 +156,6 @@ impl ops::Mul<f32> for &StatModifier {
 
 }
 
-#[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
-pub enum DamageType {
-    Magic,
-    Physical
-}
-
 impl StatModifier {
     pub fn new () -> StatModifier {
         return StatModifier {patk:0., matk:0., pdef:0., mdef:0.}
@@ -183,6 +184,12 @@ impl StatModifier {
         }
         return count;
     }
+}
+
+#[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
+pub enum DamageType {
+    Magic,
+    Physical
 }
 
 #[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
