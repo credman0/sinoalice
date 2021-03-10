@@ -70,14 +70,14 @@ fn main() {
     let mut all_players = HashMap::<String, Vec<LeveledWeapon>>::new();
     let mut seen_players = vec![];
     let mut player = next_player(&seen_players);
-    //while player.is_some() {
+    while player.is_some() {
         seen_players.push(player.as_ref().unwrap().clone());
         reset_list();
         let grid = scrape();
         all_players.insert(player.unwrap(), grid);
         check_disconnect();
         player = next_player(&seen_players);
-    //}
+    }
     std::fs::write("all_players.json", serde_json::to_string_pretty(&all_players).unwrap()).unwrap();
 }
 fn next_player(seen:&Vec<String>) -> Option<String> {

@@ -6,6 +6,7 @@ mod tests {
     }
 }
 
+use std::ops;
 use serde::{Serialize, Deserialize};
 
 #[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
@@ -24,11 +25,45 @@ pub struct LeveledWeapon {
     pub c_aid_skill_lvl:Option<u32>
 }
 
+impl LeveledWeapon {
+    pub fn scaled_skill(&self) -> CSkill {
+        return CSkill {effect:&self.weapon.c_skill.effect*LeveledWeapon::get_c_skill_level_multiplier(self.c_skill_lvl.unwrap_or(1)), min_targets:self.weapon.c_skill.min_targets, max_targets:self.weapon.c_skill.max_targets}
+    }
+
+    pub fn get_c_skill_level_multiplier(level:u32) -> f32 {
+        let mut mult = 1.+((level-1) as f32 * 0.04);
+        if level >= 15 {
+            mult += 0.04;
+        }
+        if level == 20 {
+            mult += 0.05;
+        }
+        return mult;
+    }
+
+    pub fn get_c_aid_skill_level_chance(level:u32) -> f32 {
+        let mut chance = 0.04+((level-1) as f32 * 0.005);
+        if level >= 15 {
+            chance += 0.005;
+        }
+        if level == 20 {
+            chance += 0.005;
+        }
+        return chance;
+    }
+}
+
 #[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
 pub struct CSkill {
     pub effect:SkillEffect,
     pub min_targets:u32,
     pub max_targets:u32,
+}
+
+impl CSkill {
+    pub fn expected_effect(&self) -> SkillEffect {
+        return &self.effect*((self.min_targets + self.max_targets) as f32 / 2.)
+    }
 }
 
 #[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
@@ -72,12 +107,46 @@ pub enum SkillEffect {
     Damage(f32, DamageType)
 }
 
+impl ops::Mul<f32> for &SkillEffect {
+    type Output=SkillEffect;
+    fn mul (self, mult:f32) -> SkillEffect {
+        match self {
+            SkillEffect::Buff(modifier) => {
+                return SkillEffect::Buff(modifier*mult)
+            },
+            SkillEffect::Debuff(modifier) => {
+                return SkillEffect::Debuff(modifier*mult)
+            },
+            SkillEffect::Recover(modifier) => {
+                return SkillEffect::Recover(modifier*mult)
+            },
+            SkillEffect::Damage(amount, damage_type) => {
+                return SkillEffect::Damage(amount*mult, damage_type.clone())
+            },
+        }
+    }
+
+}
+
 #[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
 pub struct StatModifier {
     pub patk:f32,
     pub matk:f32,
     pub pdef:f32,
     pub mdef:f32
+}
+
+impl ops::Mul<f32> for &StatModifier {
+    type Output=StatModifier;
+    fn mul (self, mult:f32) -> StatModifier {
+        let mut out = self.clone();
+        out.patk *= mult;
+        out.matk *= mult;
+        out.pdef *= mult;
+        out.mdef *= mult;
+        return out;
+    }
+
 }
 
 #[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
