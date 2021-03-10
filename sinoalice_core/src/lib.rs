@@ -18,6 +18,13 @@ pub struct Weapon {
 }
 
 #[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
+pub struct LeveledWeapon {
+    pub weapon:Weapon,
+    pub c_skill_lvl:Option<u32>,
+    pub c_aid_skill_lvl:Option<u32>
+}
+
+#[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
 pub struct CSkill {
     pub effect:SkillEffect,
     pub min_targets:u32,
