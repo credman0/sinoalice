@@ -132,8 +132,8 @@ impl ops::Mul<f32> for &SkillEffect {
             },
         }
     }
-
 }
+
 
 #[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
 pub struct StatModifier {

@@ -18,6 +18,8 @@ use edit_distance::edit_distance;
 // https://docs.rs/structopt/0.2.10/structopt/index.html#how-to-derivestructopt
 #[derive(StructOpt, Debug)]
 struct Cli {
+    /// If given, parse only the specified players' grids
+    player_names:Vec<String>
 }
 
 const WEAPON_JSON:&'static str = include_str!("weapons.json");
@@ -53,8 +55,6 @@ const HALF_SECOND:time::Duration = time::Duration::from_millis(500);
 const ONE_SECOND:time::Duration = time::Duration::from_millis(1000);
 const THREE_SECONDS:time::Duration = time::Duration::from_millis(3000);
 
-const NUM_REQUIRED_ACTIVATIONS:u32 = 3;
-
 const XOR_INVERTER:u8 = u8::MAX;
 
 const FAKE_NAME_SUFFIXES: &'static [&'static str] = &["Exorcist", "Holy Knight", "Hero", "Knight", "Sorcerer", "Warrior", "Wind God", "Water God", "Flame God", "Sage", "Angel", "Barrier Master"];
@@ -68,18 +68,65 @@ fn main() {
     //println!("{:?}", res);
     //progress_list();
     let mut all_players = HashMap::<String, Vec<LeveledWeapon>>::new();
-    let mut seen_players = vec![];
-    let mut player = next_player(&seen_players);
-    while player.is_some() {
-        seen_players.push(player.as_ref().unwrap().clone());
-        reset_list();
-        let grid = scrape();
-        all_players.insert(player.unwrap(), grid);
-        check_disconnect();
-        player = next_player(&seen_players);
+    if args.player_names.is_empty() {
+        let mut seen_players = vec![];
+        let mut player = next_player(&seen_players);
+        while player.is_some() {
+            seen_players.push(player.as_ref().unwrap().clone());
+            reset_list();
+            let grid = scrape();
+            all_players.insert(player.unwrap(), grid);
+            check_disconnect();
+            player = next_player(&seen_players);
+        }
+    } else {
+        for player in &args.player_names {
+            let player = select_player(&player);
+            reset_list();
+            let grid = scrape();
+            all_players.insert(player.unwrap(), grid);
+            check_disconnect();
+        }
     }
     std::fs::write("all_players.json", serde_json::to_string_pretty(&all_players).unwrap()).unwrap();
 }
+
+fn select_player(chosen_player_name:&String) -> Option<String> {
+    let data = adb::cap_screen();
+    navigate_to_log(&data);
+    open_user_filter();
+    player_list_reset();
+    let mut found_player = None;
+    let mut last_list:Vec<(std::string::String, leptess::leptonica::Box)> = vec![];
+    loop {
+        let data = adb::cap_screen();
+        let res = ocr_paragraphs(&data, &leptess::leptonica::Box::new(20,660,945,1140).unwrap());
+        let mut players = parse_players(res);
+        if players.is_empty() {
+            check_disconnect();
+            let res = ocr_paragraphs(&data, &leptess::leptonica::Box::new(20,660,945,1140).unwrap());
+            players = parse_players(res);
+        }
+        for player in &players {
+            let player_name = player.0.to_lowercase();
+            println!("{}", player_name);
+            if chosen_player_name == &player_name {
+                found_player = Some(player_name);
+                tap_player_box(&player.1);
+                break;
+            }
+        }
+        if found_player.is_some() || compare_player_lists(&players,&last_list) {
+            break;
+        }
+        last_list = players;
+        progress_list();
+    }
+    player_list_accept();
+    return found_player
+    
+}
+
 fn next_player(seen:&Vec<String>) -> Option<String> {
     let data = adb::cap_screen();
     navigate_to_log(&data);
