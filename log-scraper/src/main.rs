@@ -95,10 +95,10 @@ fn main() {
 fn get_unused_filename(basename:String, file_extension:String) -> String {
     let mut modified_name = basename;
     let paths:Vec<String> = std::fs::read_dir("./").unwrap().map(|x| x.unwrap().file_name().into_string().unwrap()).collect();
-    while paths.contains(format!("{}{}", basename, file_extension)) {
+    while paths.contains(&format!("{}{}", &modified_name, &file_extension)) {
         modified_name = format!("{}{}", modified_name, "I");
     }
-    return format!("{}{}", basename, file_extension);
+    return format!("{}{}", modified_name, file_extension);
 }
 
 fn select_player(chosen_player_name:&String) -> Option<String> {

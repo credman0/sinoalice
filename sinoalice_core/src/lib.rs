@@ -114,6 +114,28 @@ pub enum SkillEffect {
     Damage(f32, DamageType)
 }
 
+impl SkillEffect {
+    pub fn is_support(&self) -> bool{
+        match self {
+            SkillEffect::Buff(_) => return true,
+            SkillEffect::Debuff(_) => return true,
+            _ => return false
+        }
+    }
+    pub fn is_recover(&self) -> bool{
+        match self {
+            SkillEffect::Recover(_) => return true,
+            _ => return false
+        }
+    }
+    pub fn is_attack(&self) -> bool{
+        match self {
+            SkillEffect::Damage(_, _) => return true,
+            _ => return false
+        }
+    }
+}
+
 impl ops::Mul<f32> for &SkillEffect {
     type Output=SkillEffect;
     fn mul (self, mult:f32) -> SkillEffect {
@@ -153,6 +175,30 @@ impl ops::Mul<f32> for &StatModifier {
         out.mdef *= mult;
         return out;
     }
+}
+
+impl ops::Div<f32> for &StatModifier {
+    type Output=StatModifier;
+    fn div (self, div:f32) -> StatModifier {
+        let mut out = self.clone();
+        out.patk /= div;
+        out.matk /= div;
+        out.pdef /= div;
+        out.mdef /= div;
+        return out;
+    }
+}
+
+impl ops::Add<&StatModifier> for &StatModifier {
+    type Output=StatModifier;
+    fn add (self, other:&StatModifier) -> StatModifier {
+        let mut out = self.clone();
+        out.patk += other.patk;
+        out.matk += other.matk;
+        out.pdef += other.pdef;
+        out.mdef += other.mdef;
+        return out;
+    }
 
 }
 
@@ -183,6 +229,9 @@ impl StatModifier {
             count+=1;
         }
         return count;
+    }
+    pub fn sum(&self) -> f32 {
+        return self.matk + self.mdef + self.patk + self.pdef;
     }
 }
 
