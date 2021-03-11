@@ -88,7 +88,17 @@ fn main() {
             check_disconnect();
         }
     }
-    std::fs::write("all_players.json", serde_json::to_string_pretty(&all_players).unwrap()).unwrap();
+    let filename = get_unused_filename("all_players".to_string(), ".json".to_string());
+    std::fs::write(filename, serde_json::to_string_pretty(&all_players).unwrap()).unwrap();
+}
+
+fn get_unused_filename(basename:String, file_extension:String) -> String {
+    let mut modified_name = basename;
+    let paths:Vec<String> = std::fs::read_dir("./").unwrap().map(|x| x.unwrap().file_name().into_string().unwrap()).collect();
+    while paths.contains(format!("{}{}", basename, file_extension)) {
+        modified_name = format!("{}{}", modified_name, "I");
+    }
+    return format!("{}{}", basename, file_extension);
 }
 
 fn select_player(chosen_player_name:&String) -> Option<String> {
