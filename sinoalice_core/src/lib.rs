@@ -9,6 +9,8 @@ mod tests {
 use std::ops;
 use serde::{Serialize, Deserialize};
 
+const DEF_EVALUATION_SCALING:f32=0.66;
+
 #[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
 pub struct Weapon {
     pub name:String,
@@ -71,6 +73,13 @@ impl CSkill {
     pub fn expected_effect(&self) -> SkillEffect {
         return &self.effect*((self.min_targets + self.max_targets) as f32 / 2.)
     }
+    pub fn expected_effect_positive(&self) -> SkillEffect {
+        let effect = self.expected_effect();
+        if effect.is_negative() {
+            println!("Warning: Unknown correct ratio for {:?}, using approximation", self);
+        }
+        return effect.as_positive();
+    }
 }
 
 #[derive(PartialEq,Clone,Serialize,Deserialize, Debug)]
@@ -132,6 +141,38 @@ impl SkillEffect {
         match self {
             SkillEffect::Damage(_, _) => return true,
             _ => return false
+        }
+    }
+    pub fn is_negative(&self) -> bool {
+        match self {
+            SkillEffect::Buff(modifier) => {
+                return modifier.is_negative();
+            },
+            SkillEffect::Debuff(modifier) => {
+                return modifier.is_negative();
+            },
+            SkillEffect::Recover(ratio) => {
+                return ratio < &0.;
+            },
+            SkillEffect::Damage(ratio, _) => {
+                return ratio < &0.;
+            },
+        }
+    }
+    pub fn as_positive(&self) -> SkillEffect {
+        match self {
+            SkillEffect::Buff(modifier) => {
+                return SkillEffect::Buff(modifier.as_positive());
+            },
+            SkillEffect::Debuff(modifier) => {
+                return SkillEffect::Debuff(modifier.as_positive());
+            },
+            SkillEffect::Recover(ratio) => {
+                return SkillEffect::Recover(ratio.abs());
+            },
+            SkillEffect::Damage(ratio, damage_type) => {
+                return SkillEffect::Damage(ratio.abs(),damage_type.clone());
+            },
         }
     }
 }
@@ -231,7 +272,18 @@ impl StatModifier {
         return count;
     }
     pub fn sum(&self) -> f32 {
-        return self.matk + self.mdef + self.patk + self.pdef;
+        return self.matk + self.mdef*DEF_EVALUATION_SCALING + self.patk + self.pdef*DEF_EVALUATION_SCALING;
+    }
+    pub fn is_negative(&self) -> bool {
+        return self.patk < 0. || self.matk < 0. || self.pdef < 0. || self.mdef < 0.
+    }
+    pub fn as_positive(&self) -> StatModifier {
+        let mut out = self.clone();
+        out.patk = self.patk.abs();
+        out.pdef = self.pdef.abs();
+        out.matk = self.matk.abs();
+        out.mdef = self.mdef.abs();
+        return out;
     }
 }
 

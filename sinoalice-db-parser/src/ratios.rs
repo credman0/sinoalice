@@ -65,7 +65,7 @@ fn correct_one_stat(stats:&mut sinoalice_core::StatModifier, min_targets:u32, ma
                     match amount {
                         parser::EffectAmount::Slight => {panic!("Unknown ratio")},
                         parser::EffectAmount::Moderate => {
-                            stats.multiply_atk(0.6);
+                            stats.multiply_atk(0.66);
                             stats.multiply_def(1.2);
                         },
                         parser::EffectAmount::Great => {panic!("Unknown ratio")},
@@ -129,8 +129,8 @@ fn correct_two_stats(stats:&mut sinoalice_core::StatModifier, min_targets:u32, m
                             stats.multiply_def(0.72);
                         },
                         parser::EffectAmount::Moderate => {
-                            stats.multiply_atk(0.66);
-                            stats.multiply_def(1.2);
+                            stats.multiply_atk(0.6);
+                            stats.multiply_def(1.06);
                         },
                         parser::EffectAmount::Great => {panic!("Unknown ratio")},
                         parser::EffectAmount::Massive => {

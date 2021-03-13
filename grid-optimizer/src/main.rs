@@ -16,7 +16,7 @@ use serde::{Serialize, Deserialize};
 
 use structopt::StructOpt;
 
-const WEAPON_JSON:&'static str = include_str!("weapons.json");
+const WEAPON_JSON:&'static str = include_str!("../../weapons.json");
 lazy_static! {
     static ref WEAPONS:HashMap::<String, Weapon> = serde_json::from_str(WEAPON_JSON).unwrap();
 }
@@ -26,7 +26,7 @@ lazy_static! {
 // https://docs.rs/structopt/0.2.10/structopt/index.html#how-to-derivestructopt
 #[derive(StructOpt, Debug)]
 struct Cli {
-    /// JSON containing all players' grids
+    /// JSON containing all players' expanded grids
     grids_file: String,
     /// Player name of grid to optimize
     player:String,
@@ -141,7 +141,7 @@ fn calc_aid_effect(used_weapon:&LeveledWeapon, support_weapon:&LeveledWeapon) ->
     let activation_chance = LeveledWeapon::get_c_aid_skill_level_chance(support_weapon.c_aid_skill_lvl.unwrap_or(0));
     match &support_skill.aid_effect {
         sinoalice_core::AidEffect::Amplify(amount) => {
-            return CumulativeEffect::new() + &(&active_skill.expected_effect()*(activation_chance*amount));
+            return CumulativeEffect::new() + &(&active_skill.expected_effect_positive()*(activation_chance*amount));
         },
         sinoalice_core::AidEffect::Buff(modifier) => {
             return CumulativeEffect::new() + &(&SkillEffect::Buff(modifier.clone())*activation_chance);
@@ -160,16 +160,62 @@ fn main() {
     let content = fs::read_to_string(args.grids_file).expect("Unable to open file");
     let content:HashMap<String,Vec<LeveledWeapon>> = serde_json::from_str(&content).expect("Invalid json format");
     let player_grid = content[&args.player].clone();
+
+    let calculated_weapons = compute_grid(&player_grid);
+
+    let mut collected_grid:Vec<(&String,&CumulativeEffect)> = calculated_weapons.iter().collect();
+    collected_grid.sort_by(|a,b| a.1.evaluate().partial_cmp(&b.1.evaluate()).unwrap());
+
+    let mut sum = 0.;
+    for grid in &collected_grid {
+        println!("{}: {}", &grid.0, &grid.1.evaluate());
+        sum+=&grid.1.evaluate();
+    }
+    println!("Sum: {}", sum);
+    
+    if args.expirimental_weapon.is_some() {
+        let mut test_grid = player_grid.clone();
+        let worst_weapon = collected_grid[0].0;
+        let mut worst_weapon_index = None::<usize>;
+        for i in 0..test_grid.len() {
+            let weapon = &test_grid[i];
+            if &weapon.weapon.name == worst_weapon {
+                worst_weapon_index = Some(i);
+                break;
+            }
+        }
+        test_grid.remove(worst_weapon_index.unwrap());
+        test_grid.push(LeveledWeapon{weapon:WEAPONS[&args.expirimental_weapon.unwrap().to_lowercase()].clone(), c_skill_lvl:args.level, c_aid_skill_lvl:args.level});
+    
+        let calculated_weapons = compute_grid(&test_grid);
+    
+        let mut collected_grid:Vec<(&String,&CumulativeEffect)> = calculated_weapons.iter().collect();
+        collected_grid.sort_by(|a,b| a.1.evaluate().partial_cmp(&b.1.evaluate()).unwrap());
+    
+        let mut sum = 0.;
+        for grid in &collected_grid {
+            println!("{}: {}", &grid.0, &grid.1.evaluate());
+            sum+=&grid.1.evaluate();
+        }
+        println!("Sum: {}", sum);
+    }
+
+}
+
+fn compute_grid(grid:&Vec<LeveledWeapon>) -> HashMap<String,CumulativeEffect> {
     let mut calculated_weapons:HashMap<String,CumulativeEffect> = HashMap::new();
     let mut sum_effects = CumulativeEffect::new();
-    for leveled_weapon in &player_grid {
-        let effect = CumulativeEffect::new() + &leveled_weapon.scaled_skill().effect;
+    for leveled_weapon in grid {
+        let weapon_effect = leveled_weapon.scaled_skill().expected_effect_positive();
+        let effect = CumulativeEffect::new() + &weapon_effect;
+        // println!("{}: {}", &leveled_weapon.weapon.name, LeveledWeapon::get_c_skill_level_multiplier(leveled_weapon.c_skill_lvl.unwrap_or(1)));
+        // println!("{}: {}", &leveled_weapon.weapon.name, serde_json::to_string_pretty(&effect).unwrap());
         sum_effects = sum_effects + &effect;
         calculated_weapons.insert(leveled_weapon.weapon.name.clone(), effect);
     }
-    for support_weapon in &player_grid {
+    for support_weapon in grid {
         let mut weapon_support_effect = CumulativeEffect::new();
-        for leveled_weapon in &player_grid {
+        for leveled_weapon in grid {
             let effect = calc_aid_effect(&leveled_weapon,&support_weapon);
             weapon_support_effect = weapon_support_effect + &effect;
         }
@@ -177,11 +223,7 @@ fn main() {
         let previous_effect = calculated_weapons.get_mut(&support_weapon.weapon.name).unwrap();
         *previous_effect = weapon_support_effect+&previous_effect.clone();
     }
-    let avg_effects = sum_effects/(player_grid.len() as f32);
+    let avg_effects = sum_effects/(grid.len() as f32);
     println!("{}", serde_json::to_string_pretty(&avg_effects).unwrap());
-
-
-
-    println!("weapons: {}", serde_json::to_string_pretty(&calculated_weapons).unwrap());
+    return calculated_weapons;
 }
-

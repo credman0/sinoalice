@@ -22,7 +22,7 @@ struct Cli {
     player_names:Vec<String>
 }
 
-const WEAPON_JSON:&'static str = include_str!("weapons.json");
+const WEAPON_JSON:&'static str = include_str!("../../weapons.json");
 lazy_static! {
     static ref WEAPONS:HashMap::<String, Weapon> = serde_json::from_str(WEAPON_JSON).unwrap();
 }
