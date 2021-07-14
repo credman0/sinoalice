@@ -10,6 +10,7 @@ use structopt::StructOpt;
 use std::{thread, time};
 use regex::Regex;
 use std::collections::{HashSet,HashMap};
+use std::sync::{Arc, Mutex};
 use sinoalice_core::{Weapon, LeveledWeapon};
 use leptess::tesseract;
 use edit_distance::edit_distance;
@@ -192,13 +193,21 @@ fn compare_player_lists(first:&Vec<(std::string::String, leptess::leptonica::Box
 fn scrape() -> Vec<LeveledWeapon>{
     let mut weapons_seen_count = HashMap::<String,u32>::new();
     let mut weapons_levels = HashMap::<String,u32>::new();
+    let mut weapons_levels_count = HashMap::<String,u32>::new();
+    let mut weapons_levels_average = HashMap::<String,f32>::new();
     let mut weapons_aid_levels = HashMap::<String,u32>::new();
+    let mut weapons_aid_levels_count = HashMap::<String,u32>::new();
+    let mut weapons_aid_levels_average = HashMap::<String,f32>::new();
     let mut checker = ChangeChecker::new();
     let mut current_page_set = HashSet::<String>::new();
     let mut exit_loop = false;
+    let mut no_change_count = 0;
     while !exit_loop {
         let current = do_capture();
+        let time = std::time::SystemTime::now();
         let mut parsed = parse_text(&current);
+        let duration = std::time::SystemTime::now().duration_since(time);
+        println!("{:?}", duration);
         if parsed.0.is_empty() {
             check_disconnect();
             parsed = parse_text(&current);
@@ -208,6 +217,13 @@ fn scrape() -> Vec<LeveledWeapon>{
             println!("\t{} skill lvl {}", &weapon, skill_activation.lvl);
             if !weapons_levels.contains_key(&weapon) {
                 weapons_levels.insert(weapon.clone(), skill_activation.lvl);
+                weapons_levels_count.insert(weapon.clone(), 1);
+                weapons_levels_average.insert(weapon.clone(), skill_activation.lvl as f32);
+            } else {
+                weapons_levels_count.insert(weapon.clone(), weapons_levels_count[&weapon]+1);
+                let avg = (weapons_levels_average[&weapon]) * weapons_levels_count[&weapon] as f32 + skill_activation.lvl as f32;
+                let avg = avg / weapons_levels_count[&weapon] as f32;
+                weapons_levels_average.insert(weapon.clone(), avg);
             }
             if !(current_page_set.contains(&weapon)) {
                 current_page_set.insert(weapon.clone());
@@ -223,8 +239,13 @@ fn scrape() -> Vec<LeveledWeapon>{
             println!("\t\t{} aid lvl {}", &weapon, aid_skill_activation.lvl);
             if !weapons_aid_levels.contains_key(&weapon) {
                 weapons_aid_levels.insert(weapon.clone(), aid_skill_activation.lvl);
+                weapons_aid_levels_count.insert(weapon.clone(), 1);
+                weapons_aid_levels_average.insert(weapon.clone(), aid_skill_activation.lvl as f32);
             } else {
-                assert_eq!(weapons_aid_levels[&weapon], aid_skill_activation.lvl);
+                weapons_aid_levels_count.insert(weapon.clone(), weapons_aid_levels_count[&weapon]+1);
+                let avg = (weapons_aid_levels_average[&weapon]) * weapons_aid_levels_count[&weapon] as f32 + aid_skill_activation.lvl as f32;
+                let avg = avg / weapons_aid_levels_count[&weapon] as f32;
+                weapons_aid_levels_average.insert(weapon.clone(), avg);
             }
         }
         // let mut finished = true;
@@ -245,15 +266,28 @@ fn scrape() -> Vec<LeveledWeapon>{
         // }
         if checker.check_change(&parsed.0) {
             progress_list();
+            no_change_count = 0;
         } else {
-            if get_page_num() == 1 {
-                exit_loop = true;
+            if no_change_count > 2 {
+                if get_page_num() == 1 {
+                    exit_loop = true;
+                } else {
+                    next_page();
+                    checker = ChangeChecker::new();
+                    current_page_set = HashSet::<String>::new();
+                }
             } else {
-                next_page();
-                checker = ChangeChecker::new();
-                current_page_set = HashSet::<String>::new();
+                progress_list();
+                no_change_count+=1;
             }
         }
+    }
+    for weapon in weapons_levels_average.keys() {
+        weapons_levels.insert(weapon.to_string(), weapons_levels_average[weapon].round() as u32);
+    }
+    for weapon in weapons_aid_levels_average.keys() {
+        weapons_levels.insert(weapon.to_string(), weapons_aid_levels_average[weapon].round() as u32);
+        assert!(weapons_levels_average.contains_key(&weapon.to_string()));
     }
     let mut vec = Vec::<LeveledWeapon>::new();
     for key in weapons_seen_count.keys() {
@@ -500,7 +534,7 @@ fn closest_match_name(weapon:String) -> Option<String> {
             println!("Unknown weapon name: {}", weapon);
             return None;
         }
-        println!("{} -> {}", &weapon.to_lowercase(), &matches[0]);
+        println!("\t{} -> {}", &weapon.to_lowercase(), &matches[0]);
         return Some(matches[0].clone().strip_suffix("'s").unwrap().to_string());
     }
 }

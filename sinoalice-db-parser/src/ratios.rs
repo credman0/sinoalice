@@ -114,7 +114,10 @@ fn correct_two_stats(stats:&mut sinoalice_core::StatModifier, min_targets:u32, m
                             stats.multiply_atk(0.84);
                             stats.multiply_def(1.36);
                         },
-                        parser::EffectAmount::Massive => {panic!("Unknown ratio")},
+                        parser::EffectAmount::Massive => {
+                            stats.multiply_atk(1.06);
+                            stats.multiply_def(1.8);
+                        },
                     }
                 },
                 _ => panic!("Bad max targets: {}", max_targets)
