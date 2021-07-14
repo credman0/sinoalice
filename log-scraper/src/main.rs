@@ -56,6 +56,8 @@ const HALF_SECOND:time::Duration = time::Duration::from_millis(500);
 const ONE_SECOND:time::Duration = time::Duration::from_millis(1000);
 const THREE_SECONDS:time::Duration = time::Duration::from_millis(3000);
 
+const REQUIRED_LEVEL_SAMPLES:usize = 5;
+
 const XOR_INVERTER:u8 = u8::MAX;
 
 const FAKE_NAME_SUFFIXES: &'static [&'static str] = &["Exorcist", "Holy Knight", "Hero", "Knight", "Sorcerer", "Warrior", "Wind God", "Water God", "Flame God", "Sage", "Angel", "Barrier Master"];
@@ -191,106 +193,153 @@ fn compare_player_lists(first:&Vec<(std::string::String, leptess::leptonica::Box
 }
 
 fn scrape() -> Vec<LeveledWeapon>{
-    let mut weapons_seen_count = HashMap::<String,u32>::new();
+    let mut weapons_seen_count = Arc::new(Mutex::new(HashMap::<String,u32>::new()));
     let mut weapons_levels = HashMap::<String,u32>::new();
-    let mut weapons_levels_count = HashMap::<String,u32>::new();
-    let mut weapons_levels_average = HashMap::<String,f32>::new();
+    let mut weapons_levels_found = Arc::new(Mutex::new(HashMap::<String,Vec<u32>>::new()));
     let mut weapons_aid_levels = HashMap::<String,u32>::new();
-    let mut weapons_aid_levels_count = HashMap::<String,u32>::new();
-    let mut weapons_aid_levels_average = HashMap::<String,f32>::new();
+    let mut weapons_aid_levels_found = Arc::new(Mutex::new(HashMap::<String,Vec<u32>>::new()));
     let mut checker = ChangeChecker::new();
-    let mut current_page_set = HashSet::<String>::new();
+    let mut current_page_set = Arc::new(Mutex::new(HashSet::<String>::new()));
     let mut exit_loop = false;
     let mut no_change_count = 0;
+    let pool = rayon::ThreadPoolBuilder::new().num_threads(16).build().unwrap();
     while !exit_loop {
-        let current = do_capture();
-        let time = std::time::SystemTime::now();
-        let mut parsed = parse_text(&current);
-        let duration = std::time::SystemTime::now().duration_since(time);
-        println!("{:?}", duration);
-        if parsed.0.is_empty() {
-            check_disconnect();
-            parsed = parse_text(&current);
-        }
-        for skill_activation in parsed.0.clone() {
-            let weapon = skill_activation.weapon_name.to_lowercase();
-            println!("\t{} skill lvl {}", &weapon, skill_activation.lvl);
-            if !weapons_levels.contains_key(&weapon) {
-                weapons_levels.insert(weapon.clone(), skill_activation.lvl);
-                weapons_levels_count.insert(weapon.clone(), 1);
-                weapons_levels_average.insert(weapon.clone(), skill_activation.lvl as f32);
-            } else {
-                weapons_levels_count.insert(weapon.clone(), weapons_levels_count[&weapon]+1);
-                let avg = (weapons_levels_average[&weapon]) * weapons_levels_count[&weapon] as f32 + skill_activation.lvl as f32;
-                let avg = avg / weapons_levels_count[&weapon] as f32;
-                weapons_levels_average.insert(weapon.clone(), avg);
-            }
-            if !(current_page_set.contains(&weapon)) {
-                current_page_set.insert(weapon.clone());
-                if !weapons_seen_count.contains_key(&weapon) {
-                    weapons_seen_count.insert(weapon.clone(), 1);
-                } else {
-                    weapons_seen_count.insert(weapon.clone(), weapons_seen_count[&weapon] + 1);
-                }
-            }
-        }
-        for aid_skill_activation in parsed.1.clone() {
-            let weapon = aid_skill_activation.weapon_name.to_lowercase();
-            println!("\t\t{} aid lvl {}", &weapon, aid_skill_activation.lvl);
-            if !weapons_aid_levels.contains_key(&weapon) {
-                weapons_aid_levels.insert(weapon.clone(), aid_skill_activation.lvl);
-                weapons_aid_levels_count.insert(weapon.clone(), 1);
-                weapons_aid_levels_average.insert(weapon.clone(), aid_skill_activation.lvl as f32);
-            } else {
-                weapons_aid_levels_count.insert(weapon.clone(), weapons_aid_levels_count[&weapon]+1);
-                let avg = (weapons_aid_levels_average[&weapon]) * weapons_aid_levels_count[&weapon] as f32 + aid_skill_activation.lvl as f32;
-                let avg = avg / weapons_aid_levels_count[&weapon] as f32;
-                weapons_aid_levels_average.insert(weapon.clone(), avg);
-            }
-        }
-        // let mut finished = true;
-        // for key in weapons_seen_count.keys() {
-        //     if weapons_seen_count[key] < NUM_REQUIRED_ACTIVATIONS{
-        //         println!("Missing {} ({}/{})", key, weapons_seen_count[key], NUM_REQUIRED_ACTIVATIONS);
-        //         finished = false;
-        //     }
-        // }
-        // for key in weapons_aid_levels.keys() {
-        //     if !weapons_levels.contains_key(key) {
-        //         println!("Missing {} (0/{})", key, NUM_REQUIRED_ACTIVATIONS);
-        //         finished = false;
-        //     }
-        // }
-        // if finished {
-        //     exit_loop = true;
-        // }
-        if checker.check_change(&parsed.0) {
-            progress_list();
-            no_change_count = 0;
-        } else {
-            if no_change_count > 2 {
-                if get_page_num() == 1 {
-                    exit_loop = true;
-                } else {
-                    next_page();
-                    checker = ChangeChecker::new();
-                    current_page_set = HashSet::<String>::new();
-                }
-            } else {
+        pool.scope(|scope| {
+            for _ in 0..6 {
+                let img = adb::cap_screen();
+                let weapons_levels_found_clone = weapons_levels_found.clone();
+                let weapons_aid_levels_found_clone = weapons_aid_levels_found.clone();
+                scope.spawn(move |_| {
+                    let current = ocr_screencap(img);
+                    let mut parsed = parse_text(&current);
+                    if parsed.0.is_empty() {
+                        check_disconnect();
+                        parsed = parse_text(&current);
+                    }
+                    let mut weapons_levels_found = weapons_levels_found_clone.lock().unwrap();
+                    let mut weapons_aid_levels_found = weapons_aid_levels_found_clone.lock().unwrap();
+                    for skill_activation in parsed.0.clone() {
+                        let weapon = skill_activation.weapon_name.to_lowercase();
+                        println!("\t{} skill lvl {}", &weapon, skill_activation.lvl);
+                        if !weapons_levels_found.contains_key(&weapon) {
+                            weapons_levels_found.insert(weapon.clone(), vec![skill_activation.lvl]);
+                        } else {
+                            if weapons_levels_found[&weapon].len() < REQUIRED_LEVEL_SAMPLES {
+                                let vec = weapons_levels_found.get_mut(&weapon).unwrap();
+                                vec.push(skill_activation.lvl);
+                            }
+                        }
+                        // let current_page_set = current_page_set_clone.lock().unwrap();
+                        // if !(current_page_set.contains(&weapon)) {
+                        //     current_page_set.insert(weapon.clone());
+                        //     let 
+                        //     if !weapons_seen_count.contains_key(&weapon) {
+                        //         weapons_seen_count.insert(weapon.clone(), 1);
+                        //     } else {
+                        //         weapons_seen_count.insert(weapon.clone(), weapons_seen_count[&weapon] + 1);
+                        //     }
+                        // }
+                    }
+                    for aid_skill_activation in parsed.1.clone() {
+                        let weapon = aid_skill_activation.weapon_name.to_lowercase();
+                        println!("\t\t{} aid lvl {}", &weapon, aid_skill_activation.lvl);
+                        if !weapons_aid_levels_found.contains_key(&weapon) {
+                            weapons_aid_levels_found.insert(weapon.clone(), vec![aid_skill_activation.lvl]);
+                        } else {
+                            if weapons_aid_levels_found[&weapon].len() < REQUIRED_LEVEL_SAMPLES {
+                                let vec = weapons_aid_levels_found.get_mut(&weapon).unwrap();
+                                vec.push(aid_skill_activation.lvl);
+                            }
+                        }
+                    }
+                    // let mut finished = true;
+                    // for key in weapons_seen_count.keys() {
+                    //     if weapons_seen_count[key] < NUM_REQUIRED_ACTIVATIONS{
+                    //         println!("Missing {} ({}/{})", key, weapons_seen_count[key], NUM_REQUIRED_ACTIVATIONS);
+                    //         finished = false;
+                    //     }
+                    // }
+                    // for key in weapons_aid_levels.keys() {
+                    //     if !weapons_levels.contains_key(key) {
+                    //         println!("Missing {} (0/{})", key, NUM_REQUIRED_ACTIVATIONS);
+                    //         finished = false;
+                    //     }
+                    // }
+                    // if finished {
+                    //     exit_loop = true;
+                    // }
+                });
                 progress_list();
-                no_change_count+=1;
             }
+            // if checker.check_change(&parsed.0) {
+            //     progress_list();
+            //     no_change_count = 0;
+            // } else {
+            //     if no_change_count > 2 {
+            //             checker = ChangeChecker::new();
+            //             current_page_set = HashSet::<String>::new();
+            //         }
+            //     } else {
+            //         progress_list();
+            //         no_change_count+=1;
+            //     }
+            // }
+        });
+        if get_page_num() == 1 {
+            exit_loop = true;
+        } else {
+           next_page();
         }
     }
-    for weapon in weapons_levels_average.keys() {
-        weapons_levels.insert(weapon.to_string(), weapons_levels_average[weapon].round() as u32);
+    let weapons_levels_found = weapons_levels_found.lock().unwrap();
+    let weapons_aid_levels_found = weapons_aid_levels_found.lock().unwrap();
+    for weapon in weapons_levels_found.keys() {
+        let mut majority_level = 21;
+        for weapon_level in &weapons_levels_found[weapon] {
+            let weapon_level = *weapon_level;
+            if weapon_level > 20 {
+                continue;
+            }
+            if majority_level > 20 {
+                majority_level = weapon_level;
+            } else {
+                if weapon_level != majority_level {
+                    // slightly slow but should be very rare
+                    let majority_count = weapons_levels_found[weapon].iter().filter(|&n| *n == majority_level).count();
+                    let other_count = weapons_levels_found[weapon].iter().filter(|&n| *n == weapon_level).count();
+                    if majority_count < other_count {
+                        majority_level = weapon_level;
+                    }
+                }
+            }
+            weapons_levels.insert(weapon.to_string(), majority_level);
+        }
     }
-    for weapon in weapons_aid_levels_average.keys() {
-        weapons_levels.insert(weapon.to_string(), weapons_aid_levels_average[weapon].round() as u32);
-        assert!(weapons_levels_average.contains_key(&weapon.to_string()));
+    for weapon in weapons_aid_levels_found.keys() {
+        assert!(weapons_levels_found.contains_key(&weapon.to_string()));
+        let mut majority_level = 21;
+        for weapon_level in &weapons_levels_found[weapon] {
+            let weapon_level = *weapon_level;
+            if weapon_level > 20 {
+                continue;
+            }
+            if majority_level > 20 {
+                majority_level = weapon_level;
+            } else {
+                if weapon_level != majority_level {
+                    // slightly slow but should be very rare
+                    let majority_count = weapons_aid_levels_found[weapon].iter().filter(|&n| *n == majority_level).count();
+                    let other_count = weapons_aid_levels_found[weapon].iter().filter(|&n| *n == weapon_level).count();
+                    if majority_count < other_count {
+                        majority_level = weapon_level;
+                    }
+                }
+            }
+            weapons_aid_levels.insert(weapon.to_string(), majority_level);
+        }
     }
     let mut vec = Vec::<LeveledWeapon>::new();
-    for key in weapons_seen_count.keys() {
+    for key in weapons_levels_found.keys() {
         let key = key.to_lowercase();
         let weapon = WEAPONS[&key].clone();
         let skill_level = weapons_levels.get(&key);
@@ -362,6 +411,7 @@ fn reset_list() {
     let data = adb::cap_screen();
     navigate_to_log(&data);
     press_back();
+    check_disconnect();
     enter_log_from_history();
     let data = adb::cap_screen();
     navigate_to_log(&data);
@@ -451,6 +501,10 @@ fn open_user_filter() {
 
 fn do_capture() -> String{
     let data = adb::cap_screen();
+    return ocr(&data, &leptess::leptonica::Box::new(20,650,945,1140).unwrap());
+}
+
+fn ocr_screencap(data:Vec<u8>) -> String {
     return ocr(&data, &leptess::leptonica::Box::new(20,650,945,1140).unwrap());
 }
 
